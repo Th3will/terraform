@@ -55,7 +55,7 @@ require (
 	github.com/golang/groupcache v0.0.0-20200121045136-8c9f03a8e57e // indirect
 	github.com/golang/mock v1.5.0
 	github.com/golang/protobuf v1.4.3
-	github.com/google/go-cmp v0.5.5
+	github.com/google/go-cmp v0.5.6
 	github.com/google/go-querystring v1.0.0 // indirect
 	github.com/google/gofuzz v1.0.0 // indirect
 	github.com/google/uuid v1.2.0

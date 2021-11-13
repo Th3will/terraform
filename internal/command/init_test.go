@@ -540,11 +540,6 @@ func TestInit_backendConfigFileChange(t *testing.T) {
 	defer os.RemoveAll(td)
 	defer testChdir(t, td)()
 
-	// Ask input
-	defer testInputMap(t, map[string]string{
-		"backend-migrate-to-new": "no",
-	})()
-
 	ui := new(cli.MockUi)
 	view, _ := testView(t)
 	c := &InitCommand{
@@ -564,6 +559,95 @@ func TestInit_backendConfigFileChange(t *testing.T) {
 	state := testDataStateRead(t, filepath.Join(DefaultDataDir, DefaultStateFilename))
 	if got, want := normalizeJSON(t, state.Backend.ConfigRaw), `{"path":"hello","workspace_dir":null}`; got != want {
 		t.Errorf("wrong config\ngot:  %s\nwant: %s", got, want)
+	}
+}
+
+func TestInit_backendMigrateWhileLocked(t *testing.T) {
+	// Create a temporary working directory that is empty
+	td := tempDir(t)
+	testCopyDir(t, testFixturePath("init-backend-migrate-while-locked"), td)
+	defer os.RemoveAll(td)
+	defer testChdir(t, td)()
+
+	providerSource, close := newMockProviderSource(t, map[string][]string{
+		"hashicorp/test": {"1.2.3"},
+	})
+	defer close()
+
+	ui := new(cli.MockUi)
+	view, _ := testView(t)
+	c := &InitCommand{
+		Meta: Meta{
+			testingOverrides: metaOverridesForProvider(testProvider()),
+			ProviderSource:   providerSource,
+			Ui:               ui,
+			View:             view,
+		},
+	}
+
+	// Create some state, so the backend has something to migrate from
+	f, err := os.Create("local-state.tfstate")
+	if err != nil {
+		t.Fatalf("err: %s", err)
+	}
+	err = writeStateForTesting(testState(), f)
+	f.Close()
+	if err != nil {
+		t.Fatalf("err: %s", err)
+	}
+
+	// Lock the source state
+	unlock, err := testLockState(testDataDir, "local-state.tfstate")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer unlock()
+
+	// Attempt to migrate
+	args := []string{"-backend-config", "input.config", "-migrate-state", "-force-copy"}
+	if code := c.Run(args); code == 0 {
+		t.Fatalf("expected nonzero exit code: %s", ui.OutputWriter.String())
+	}
+
+	// Disabling locking should work
+	args = []string{"-backend-config", "input.config", "-migrate-state", "-force-copy", "-lock=false"}
+	if code := c.Run(args); code != 0 {
+		t.Fatalf("expected zero exit code, got %d: %s", code, ui.ErrorWriter.String())
+	}
+}
+
+func TestInit_backendConfigFileChangeWithExistingState(t *testing.T) {
+	// Create a temporary working directory that is empty
+	td := tempDir(t)
+	testCopyDir(t, testFixturePath("init-backend-config-file-change-migrate-existing"), td)
+	defer os.RemoveAll(td)
+	defer testChdir(t, td)()
+
+	ui := new(cli.MockUi)
+	c := &InitCommand{
+		Meta: Meta{
+			testingOverrides: metaOverridesForProvider(testProvider()),
+			Ui:               ui,
+		},
+	}
+
+	oldState := testDataStateRead(t, filepath.Join(DefaultDataDir, DefaultStateFilename))
+
+	// we deliberately do not provide the answer for backend-migrate-copy-to-empty to trigger error
+	args := []string{"-migrate-state", "-backend-config", "input.config", "-input=true"}
+	if code := c.Run(args); code == 0 {
+		t.Fatal("expected error")
+	}
+
+	// Read our backend config and verify new settings are not saved
+	state := testDataStateRead(t, filepath.Join(DefaultDataDir, DefaultStateFilename))
+	if got, want := normalizeJSON(t, state.Backend.ConfigRaw), `{"path":"local-state.tfstate"}`; got != want {
+		t.Errorf("wrong config\ngot:  %s\nwant: %s", got, want)
+	}
+
+	// without changing config, hash should not change
+	if oldState.Backend.Hash != state.Backend.Hash {
+		t.Errorf("backend hash should not have changed\ngot:  %d\nwant: %d", state.Backend.Hash, oldState.Backend.Hash)
 	}
 }
 
@@ -1377,14 +1461,12 @@ func TestInit_cancel(t *testing.T) {
 	defer os.RemoveAll(td)
 	defer testChdir(t, td)()
 
-	providerSource, closeSrc := newMockProviderSource(t, map[string][]string{
-		"test":      {"1.2.3", "1.2.4"},
-		"test-beta": {"1.2.4"},
-		"source":    {"1.2.2", "1.2.3", "1.2.1"},
-	})
-	defer closeSrc()
+	// Use a provider source implementation which is designed to hang indefinitely,
+	// to avoid a race between the closed shutdown channel and the provider source
+	// operations.
+	providerSource := &getproviders.HangingSource{}
 
-	// our shutdown channel is pre-closed so init will exit as soon as it
+	// Our shutdown channel is pre-closed so init will exit as soon as it
 	// starts a cancelable portion of the process.
 	shutdownCh := make(chan struct{})
 	close(shutdownCh)
@@ -1406,7 +1488,7 @@ func TestInit_cancel(t *testing.T) {
 	args := []string{}
 
 	if code := c.Run(args); code == 0 {
-		t.Fatalf("succeeded; wanted error")
+		t.Fatalf("succeeded; wanted error\n%s", ui.OutputWriter.String())
 	}
 	// Currently the first operation that is cancelable is provider
 	// installation, so our error message comes from there. If we
@@ -1611,6 +1693,59 @@ func TestInit_checkRequiredVersion(t *testing.T) {
 	if strings.Contains(errStr, `required_version = ">= 0.13.0"`) {
 		t.Fatalf("output should not point to met version constraint, but is:\n\n%s", errStr)
 	}
+}
+
+// Verify that init will error out with an invalid version constraint, even if
+// there are other invalid configuration constructs.
+func TestInit_checkRequiredVersionFirst(t *testing.T) {
+	t.Run("root_module", func(t *testing.T) {
+		td := t.TempDir()
+		testCopyDir(t, testFixturePath("init-check-required-version-first"), td)
+		defer testChdir(t, td)()
+
+		ui := cli.NewMockUi()
+		view, _ := testView(t)
+		c := &InitCommand{
+			Meta: Meta{
+				testingOverrides: metaOverridesForProvider(testProvider()),
+				Ui:               ui,
+				View:             view,
+			},
+		}
+
+		args := []string{}
+		if code := c.Run(args); code != 1 {
+			t.Fatalf("got exit status %d; want 1\nstderr:\n%s\n\nstdout:\n%s", code, ui.ErrorWriter.String(), ui.OutputWriter.String())
+		}
+		errStr := ui.ErrorWriter.String()
+		if !strings.Contains(errStr, `Unsupported Terraform Core version`) {
+			t.Fatalf("output should point to unmet version constraint, but is:\n\n%s", errStr)
+		}
+	})
+	t.Run("sub_module", func(t *testing.T) {
+		td := t.TempDir()
+		testCopyDir(t, testFixturePath("init-check-required-version-first-module"), td)
+		defer testChdir(t, td)()
+
+		ui := cli.NewMockUi()
+		view, _ := testView(t)
+		c := &InitCommand{
+			Meta: Meta{
+				testingOverrides: metaOverridesForProvider(testProvider()),
+				Ui:               ui,
+				View:             view,
+			},
+		}
+
+		args := []string{}
+		if code := c.Run(args); code != 1 {
+			t.Fatalf("got exit status %d; want 1\nstderr:\n%s\n\nstdout:\n%s", code, ui.ErrorWriter.String(), ui.OutputWriter.String())
+		}
+		errStr := ui.ErrorWriter.String()
+		if !strings.Contains(errStr, `Unsupported Terraform Core version`) {
+			t.Fatalf("output should point to unmet version constraint, but is:\n\n%s", errStr)
+		}
+	})
 }
 
 func TestInit_providerLockFile(t *testing.T) {

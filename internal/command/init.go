@@ -15,6 +15,7 @@ import (
 	"github.com/hashicorp/terraform/internal/addrs"
 	"github.com/hashicorp/terraform/internal/backend"
 	backendInit "github.com/hashicorp/terraform/internal/backend/init"
+	"github.com/hashicorp/terraform/internal/cloud"
 	"github.com/hashicorp/terraform/internal/configs"
 	"github.com/hashicorp/terraform/internal/configs/configschema"
 	"github.com/hashicorp/terraform/internal/getproviders"
@@ -44,6 +45,8 @@ func (c *InitCommand) Run(args []string) int {
 	cmdFlags.StringVar(&flagFromModule, "from-module", "", "copy the source of the given module into the directory before init")
 	cmdFlags.BoolVar(&flagGet, "get", true, "")
 	cmdFlags.BoolVar(&c.forceInitCopy, "force-copy", false, "suppress prompts about copying state data")
+	cmdFlags.BoolVar(&c.Meta.stateLock, "lock", true, "lock state")
+	cmdFlags.DurationVar(&c.Meta.stateLockTimeout, "lock-timeout", 0, "lock timeout")
 	cmdFlags.BoolVar(&c.reconfigure, "reconfigure", false, "reconfigure")
 	cmdFlags.BoolVar(&c.migrateState, "migrate-state", false, "migrate state")
 	cmdFlags.BoolVar(&flagUpgrade, "upgrade", false, "")
@@ -150,19 +153,7 @@ func (c *InitCommand) Run(args []string) int {
 	// initialization functionality remains built around "earlyconfig" and
 	// so we need to still load the module via that mechanism anyway until we
 	// can do some more invasive refactoring here.
-	rootMod, confDiags := c.loadSingleModule(path)
 	rootModEarly, earlyConfDiags := c.loadSingleModuleEarly(path)
-	if confDiags.HasErrors() {
-		c.Ui.Error(c.Colorize().Color(strings.TrimSpace(errInitConfigError)))
-		// TODO: It would be nice to check the version constraints in
-		// rootModEarly.RequiredCore and print out a hint if the module is
-		// declaring that it's not compatible with this version of Terraform,
-		// though we're deferring that for now because we're intending to
-		// refactor our use of "earlyconfig" here anyway and so whatever we
-		// might do here right now would likely be invalidated by that.
-		c.showDiagnostics(confDiags)
-		return 1
-	}
 	// If _only_ the early loader encountered errors then that's unusual
 	// (it should generally be a superset of the normal loader) but we'll
 	// return those errors anyway since otherwise we'll probably get
@@ -172,7 +163,12 @@ func (c *InitCommand) Run(args []string) int {
 		c.Ui.Error(c.Colorize().Color(strings.TrimSpace(errInitConfigError)))
 		// Errors from the early loader are generally not as high-quality since
 		// it has less context to work with.
-		diags = diags.Append(confDiags)
+
+		// TODO: It would be nice to check the version constraints in
+		// rootModEarly.RequiredCore and print out a hint if the module is
+		// declaring that it's not compatible with this version of Terraform,
+		// and that may be what caused earlyconfig to fail.
+		diags = diags.Append(earlyConfDiags)
 		c.showDiagnostics(diags)
 		return 1
 	}
@@ -192,6 +188,20 @@ func (c *InitCommand) Run(args []string) int {
 	// With all of the modules (hopefully) installed, we can now try to load the
 	// whole configuration tree.
 	config, confDiags := c.loadConfig(path)
+	// configDiags will be handled after the version constraint check, since an
+	// incorrect version of terraform may be producing errors for configuration
+	// constructs added in later versions.
+
+	// Before we go further, we'll check to make sure none of the modules in
+	// the configuration declare that they don't support this Terraform
+	// version, so we can produce a version-related error message rather than
+	// potentially-confusing downstream errors.
+	versionDiags := terraform.CheckCoreVersionRequirements(config)
+	if versionDiags.HasErrors() {
+		c.showDiagnostics(versionDiags)
+		return 1
+	}
+
 	diags = diags.Append(confDiags)
 	if confDiags.HasErrors() {
 		c.Ui.Error(strings.TrimSpace(errInitConfigError))
@@ -199,21 +209,11 @@ func (c *InitCommand) Run(args []string) int {
 		return 1
 	}
 
-	// Before we go further, we'll check to make sure none of the modules in the
-	// configuration declare that they don't support this Terraform version, so
-	// we can produce a version-related error message rather than
-	// potentially-confusing downstream errors.
-	versionDiags := terraform.CheckCoreVersionRequirements(config)
-	diags = diags.Append(versionDiags)
-	if versionDiags.HasErrors() {
-		c.showDiagnostics(diags)
-		return 1
-	}
-
 	var back backend.Backend
-	if flagBackend {
 
-		be, backendOutput, backendDiags := c.initBackend(rootMod, flagConfigExtra)
+	switch {
+	case config.Module.CloudConfig != nil:
+		be, backendOutput, backendDiags := c.initCloud(config.Module)
 		diags = diags.Append(backendDiags)
 		if backendDiags.HasErrors() {
 			c.showDiagnostics(diags)
@@ -223,7 +223,18 @@ func (c *InitCommand) Run(args []string) int {
 			header = true
 		}
 		back = be
-	} else {
+	case flagBackend:
+		be, backendOutput, backendDiags := c.initBackend(config.Module, flagConfigExtra)
+		diags = diags.Append(backendDiags)
+		if backendDiags.HasErrors() {
+			c.showDiagnostics(diags)
+			return 1
+		}
+		if backendOutput {
+			header = true
+		}
+		back = be
+	default:
 		// load the previously-stored backend config
 		be, backendDiags := c.Meta.backendFromState()
 		diags = diags.Append(backendDiags)
@@ -240,7 +251,7 @@ func (c *InitCommand) Run(args []string) int {
 		// by a previous run, so we must still expect that "back" may be nil
 		// in code that follows.
 		var backDiags tfdiags.Diagnostics
-		back, backDiags = c.Backend(nil)
+		back, backDiags = c.Backend(&BackendOpts{Init: true})
 		if backDiags.HasErrors() {
 			// This is fine. We'll proceed with no backend, then.
 			back = nil
@@ -253,7 +264,7 @@ func (c *InitCommand) Run(args []string) int {
 	// on a previous run) we'll use the current state as a potential source
 	// of provider dependencies.
 	if back != nil {
-		c.ignoreRemoteBackendVersionConflict(back)
+		c.ignoreRemoteVersionConflict(back)
 		workspace, err := c.Workspace()
 		if err != nil {
 			c.Ui.Error(fmt.Sprintf("Error selecting workspace: %s", err))
@@ -294,12 +305,23 @@ func (c *InitCommand) Run(args []string) int {
 	// by errors then we'll output them here so that the success message is
 	// still the final thing shown.
 	c.showDiagnostics(diags)
-	c.Ui.Output(c.Colorize().Color(strings.TrimSpace(outputInitSuccess)))
+	_, cloud := back.(*cloud.Cloud)
+	output := outputInitSuccess
+	if cloud {
+		output = outputInitSuccessCloud
+	}
+
+	c.Ui.Output(c.Colorize().Color(strings.TrimSpace(output)))
+
 	if !c.RunningInAutomation {
 		// If we're not running in an automation wrapper, give the user
 		// some more detailed next steps that are appropriate for interactive
 		// shell usage.
-		c.Ui.Output(c.Colorize().Color(strings.TrimSpace(outputInitSuccessCLI)))
+		output = outputInitSuccessCLI
+		if cloud {
+			output = outputInitSuccessCLICloud
+		}
+		c.Ui.Output(c.Colorize().Color(strings.TrimSpace(output)))
 	}
 	return 0
 }
@@ -339,6 +361,21 @@ func (c *InitCommand) getModules(path string, earlyRoot *tfconfig.Module, upgrad
 	return true, diags
 }
 
+func (c *InitCommand) initCloud(root *configs.Module) (be backend.Backend, output bool, diags tfdiags.Diagnostics) {
+	c.Ui.Output(c.Colorize().Color("\n[reset][bold]Initializing Terraform Cloud..."))
+
+	backendConfig := root.CloudConfig.ToBackendConfig()
+
+	opts := &BackendOpts{
+		Config: &backendConfig,
+		Init:   true,
+	}
+
+	back, backDiags := c.Backend(opts)
+	diags = diags.Append(backDiags)
+	return back, true, diags
+}
+
 func (c *InitCommand) initBackend(root *configs.Module, extraConfig rawFlags) (be backend.Backend, output bool, diags tfdiags.Diagnostics) {
 	c.Ui.Output(c.Colorize().Color("\n[reset][bold]Initializing the backend..."))
 
@@ -346,6 +383,16 @@ func (c *InitCommand) initBackend(root *configs.Module, extraConfig rawFlags) (b
 	var backendConfigOverride hcl.Body
 	if root.Backend != nil {
 		backendType := root.Backend.Type
+		if backendType == "cloud" {
+			diags = diags.Append(&hcl.Diagnostic{
+				Severity: hcl.DiagError,
+				Summary:  "Unsupported backend type",
+				Detail:   fmt.Sprintf("There is no explicit backend type named %q. To configure Terraform Cloud, declare a 'cloud' block instead.", backendType),
+				Subject:  &root.Backend.TypeRange,
+			})
+			return nil, true, diags
+		}
+
 		bf := backendInit.Backend(backendType)
 		if bf == nil {
 			diags = diags.Append(&hcl.Diagnostic{
@@ -936,6 +983,8 @@ func (c *InitCommand) AutocompleteFlags() complete.Flags {
 		"-from-module":    completePredictModuleSource,
 		"-get":            completePredictBoolean,
 		"-input":          completePredictBoolean,
+		"-lock":           completePredictBoolean,
+		"-lock-timeout":   complete.PredictAnything,
 		"-no-color":       complete.PredictNothing,
 		"-plugin-dir":     complete.PredictDirs(""),
 		"-reconfigure":    complete.PredictNothing,
@@ -963,7 +1012,8 @@ Usage: terraform [global options] init [options]
 
 Options:
 
-  -backend=true           Configure the backend for this configuration.
+  -backend=false          Disable backend initialization for this configuration
+                          and use the previously initialized backend instead.
 
   -backend-config=path    This can be either a path to an HCL file with key/value
                           assignments (same format as terraform.tfvars) or a
@@ -979,10 +1029,17 @@ Options:
   -from-module=SOURCE     Copy the contents of the given module into the target
                           directory before initialization.
 
-  -get=true               Download any modules for this configuration.
+  -get=false              Disable downloading modules for this configuration.
 
-  -input=true             Ask for input if necessary. If false, will error if
-                          input was required.
+  -input=false            Disable prompting for missing backend configuration
+                          values. This will result in an error if the backend
+                          configuration is not fully specified.
+
+  -lock=false             Don't hold a state lock during backend migration.
+                          This is dangerous if others might concurrently run
+                          commands against the same workspace.
+
+  -lock-timeout=0s        Duration to retry a state lock.
 
   -no-color               If specified, output won't contain any color.
 
@@ -997,9 +1054,10 @@ Options:
   -migrate-state          Reconfigure the backend, and attempt to migrate any
                           existing state.
 
-  -upgrade=false          If installing modules (-get) or plugins, ignore
-                          previously-downloaded objects and install the
-                          latest version allowed within configured constraints.
+  -upgrade                Install the latest module and provider versions
+                          allowed within configured constraints, overriding the
+                          default behavior of selecting exactly the version
+                          recorded in the dependency lockfile.
 
   -lockfile=MODE          Set a dependency lockfile mode.
                           Currently only "readonly" is valid.
@@ -1041,6 +1099,10 @@ const outputInitSuccess = `
 [reset][bold][green]Terraform has been successfully initialized![reset][green]
 `
 
+const outputInitSuccessCloud = `
+[reset][bold][green]Terraform Cloud has been successfully initialized![reset][green]
+`
+
 const outputInitSuccessCLI = `[reset][green]
 You may now begin working with Terraform. Try running "terraform plan" to see
 any changes that are required for your infrastructure. All Terraform commands
@@ -1049,6 +1111,14 @@ should now work.
 If you ever set or change modules or backend configuration for Terraform,
 rerun this command to reinitialize your working directory. If you forget, other
 commands will detect it and remind you to do so if necessary.
+`
+
+const outputInitSuccessCLICloud = `[reset][green]
+You may now begin working with Terraform Cloud. Try running "terraform plan" to
+see any changes that are required for your infrastructure.
+
+If you ever set or change modules or Terraform Settings, run "terraform init"
+again to reinitialize your working directory.
 `
 
 // providerProtocolTooOld is a message sent to the CLI UI if the provider's

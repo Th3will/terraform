@@ -31,10 +31,10 @@ type Plan struct {
 
 	VariableValues      map[string]DynamicValue
 	Changes             *Changes
+	DriftedResources    []*ResourceInstanceChangeSrc
 	TargetAddrs         []addrs.Targetable
 	ExcludeTargetsAddrs []addrs.Targetable
 	ForceReplaceAddrs   []addrs.AbsResourceInstance
-	ProviderSHA256s     map[string][]byte
 	Backend             Backend
 
 	// PrevRunState and PriorState both describe the situation that the plan

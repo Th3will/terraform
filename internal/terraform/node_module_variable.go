@@ -200,7 +200,6 @@ func (n *nodeModuleVariable) DotNode(name string, opts *dag.DotOpts) *dag.DotNod
 // validation, and we will not have any expansion module instance
 // repetition data.
 func (n *nodeModuleVariable) evalModuleCallArgument(ctx EvalContext, validateOnly bool) (map[string]cty.Value, error) {
-	wantType := n.Config.Type
 	name := n.Addr.Variable.Name
 	expr := n.Expr
 
@@ -238,7 +237,7 @@ func (n *nodeModuleVariable) evalModuleCallArgument(ctx EvalContext, validateOnl
 	// now we can do our own local type conversion and produce an error message
 	// with better context if it fails.
 	var convErr error
-	val, convErr = convert.Convert(val, wantType)
+	val, convErr = convert.Convert(val, n.Config.ConstraintType)
 	if convErr != nil {
 		diags = diags.Append(&hcl.Diagnostic{
 			Severity: hcl.DiagError,
@@ -251,10 +250,26 @@ func (n *nodeModuleVariable) evalModuleCallArgument(ctx EvalContext, validateOnl
 		})
 		// We'll return a placeholder unknown value to avoid producing
 		// redundant downstream errors.
-		val = cty.UnknownVal(wantType)
+		val = cty.UnknownVal(n.Config.Type)
+	}
+
+	// If there is no default, we have to ensure that a null value is allowed
+	// for this variable.
+	if n.Config.Default == cty.NilVal && !n.Config.Nullable && val.IsNull() {
+		// The value cannot be null, and there is no configured default.
+		diags = diags.Append(&hcl.Diagnostic{
+			Severity: hcl.DiagError,
+			Summary:  `Invalid variable value`,
+			Detail:   fmt.Sprintf(`The variable %q is required, but the given value is null.`, n.Addr),
+			Subject:  &n.Config.DeclRange,
+		})
+		// Stub out our return value so that the semantic checker doesn't
+		// produce redundant downstream errors.
+		val = cty.UnknownVal(n.Config.Type)
 	}
 
 	vals := make(map[string]cty.Value)
 	vals[name] = val
+
 	return vals, diags.ErrWithWarnings()
 }

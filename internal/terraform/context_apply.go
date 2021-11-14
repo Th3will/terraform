@@ -1,5 +1,6 @@
 package terraform
 
+//starred
 import (
 	"fmt"
 	"log"
@@ -73,10 +74,10 @@ func (c *Context) Apply(plan *plans.Plan, config *configs.Config) (*states.State
 		diags = diags.Append(tfdiags.Sourceless(
 			tfdiags.Warning,
 			"Applied changes may be incomplete",
-			`The plan was created with the -target option in effect, so some changes requested in the configuration may have been ignored and the output values may not be fully updated. Run the following command to verify that no other changes are pending:
+			`The plan was created with the -target/exclude option in effect, so some changes requested in the configuration may have been ignored and the output values may not be fully updated. Run the following command to verify that no other changes are pending:
     terraform plan
 	
-Note that the -target option is not suitable for routine use, and is provided only for exceptional situations such as recovering from errors or mistakes, or when Terraform specifically suggests to use it as part of an error message.`,
+Note that the -target/exclude option is not suitable for routine use, and is provided only for exceptional situations such as recovering from errors or mistakes, or when Terraform specifically suggests to use it as part of an error message.`,
 		))
 	}
 

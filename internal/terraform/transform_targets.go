@@ -137,6 +137,7 @@ func (t *TargetsTransformer) selectTargetedNodes(g *Graph, addrs []addrs.Targeta
 	return targetedNodes, nil
 }
 
+// Same purpose as selectTargetedNodes above, but modified for exclude
 func (t *TargetsTransformer) selectExcludedNodes(g *Graph, addrs []addrs.Targetable) (dag.Set, error) {
 	targetedNodes := make(dag.Set)
 

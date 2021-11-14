@@ -59,8 +59,6 @@ func (t *TargetsTransformer) Transform(g *Graph) error {
 	return nil
 }
 
-//checks list of target and excludeTargets to see if any are the same, if so prints
-
 // Returns a set of targeted nodes. A targeted node is either addressed
 // directly, address indirectly via its container, or it's a dependency of a
 // targeted node.

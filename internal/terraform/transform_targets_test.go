@@ -338,6 +338,8 @@ output.grandchild_id
 	}
 }
 
+// This tests the ExcludeTargetsTransformer targeting a whole module,
+// rather than a resource within a module instance.
 func TestExcludeTargetsTransformer_wholeModule(t *testing.T) {
 	mod := testModule(t, "transform-targets-downstream")
 
@@ -408,6 +410,7 @@ output.root_id
 	}
 }
 
+//This tests whether exclude and target work together without conflicting
 func TestBothTargetTransformer(t *testing.T) {
 	mod := testModule(t, "transform-targets-conflict")
 

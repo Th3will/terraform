@@ -720,12 +720,16 @@ func blockedMovesWarningDiag(results refactoring.MoveResults) tfdiags.Diagnostic
 
 //Checks whether there are any resources that are both targeted and excluded
 func hasConflictingTargetOptions(opts *PlanOpts) bool {
-	for _, target := range opts.Targets {
-		for _, excludeTarget := range opts.ExcludeTargets {
-			if target.String() == excludeTarget.String() {
-				return true
-			}
+	targetSet := make(map[string]bool)
+	for _, s := range opts.Targets {
+		targetSet[s.String()] = true
+	}
+
+	for _, excludeTargets := range opts.ExcludeTargets {
+		if targetSet[excludeTargets.String()] {
+			return true
 		}
 	}
+
 	return false
 }

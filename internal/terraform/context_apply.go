@@ -1,6 +1,5 @@
 package terraform
 
-//starred
 import (
 	"fmt"
 	"log"

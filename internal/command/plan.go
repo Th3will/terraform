@@ -154,6 +154,7 @@ func (c *PlanCommand) OperationRequest(
 	opReq.ForceReplace = args.ForceReplace
 	opReq.Type = backend.OperationTypePlan
 	opReq.View = view.Operation()
+
 	var err error
 	opReq.ConfigLoader, err = c.initConfigLoader()
 	if err != nil {

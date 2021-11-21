@@ -176,7 +176,7 @@ the previous section, are also available with the same meanings on
 
 * `-exclude=ADDRESS` - Instructs Terraform to focus its planning efforts
    on resource instances that don't match the given address and on any objects
-   that those instances depend on 
+   that those instances depend on
 
     This command is for exceptional use only. See
     [Resource Targeting](#resource-targeting)
@@ -195,10 +195,10 @@ the previous section, are also available with the same meanings on
   ["tfvars" file](/docs/language/values/variables.html#variable-definitions-tfvars-files).
   Use this option multiple times to include values from more than one file.
 
-There are several other ways to set values for input variables in the root
-module, aside from the `-var` and `-var-file` options. For more information,
-see
-[Assigning Values to Root Module Variables](/docs/language/values/variables.html#assigning-values-to-root-module-variables).
+There are several other ways to set values for input variables in the
+root module, aside from the `-var` and `-var-file` options. For more
+information, see [Assigning Values to Root Module
+Variables](/docs/language/values/variables.html#assigning-values-to-root-module-variables).
 
 ### Input Variables on the Command Line
 

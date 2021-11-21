@@ -451,6 +451,7 @@ func (n *NodeAbstractResourceInstance) planDestroy(ctx EvalContext, currentState
 // global planned changes.
 func (n *NodeAbstractResourceInstance) writeChange(ctx EvalContext, change *plans.ResourceInstanceChange, deposedKey states.DeposedKey) error {
 	changes := ctx.Changes()
+
 	if change == nil {
 		// Caller sets nil to indicate that we need to remove a change from
 		// the set of changes.
@@ -1314,6 +1315,7 @@ func processIgnoreChangesIndividual(prior, config cty.Value, ignoreChangesPath [
 func (n *NodeAbstractResourceInstance) readDataSource(ctx EvalContext, configVal cty.Value) (cty.Value, tfdiags.Diagnostics) {
 	var diags tfdiags.Diagnostics
 	var newVal cty.Value
+
 	config := *n.Config
 
 	provider, providerSchema, err := getProvider(ctx, n.ResolvedProvider)
@@ -1468,6 +1470,7 @@ func (n *NodeAbstractResourceInstance) providerMetas(ctx EvalContext) (cty.Value
 func (n *NodeAbstractResourceInstance) planDataSource(ctx EvalContext, currentState *states.ResourceInstanceObject) (*plans.ResourceInstanceChange, *states.ResourceInstanceObject, tfdiags.Diagnostics) {
 	var diags tfdiags.Diagnostics
 	var configVal cty.Value
+
 	_, providerSchema, err := getProvider(ctx, n.ResolvedProvider)
 	if err != nil {
 		return nil, nil, diags.Append(err)
@@ -1976,6 +1979,7 @@ func (n *NodeAbstractResourceInstance) apply(
 	change *plans.ResourceInstanceChange,
 	applyConfig *configs.Resource,
 	createBeforeDestroy bool) (*states.ResourceInstanceObject, tfdiags.Diagnostics) {
+
 	var diags tfdiags.Diagnostics
 	if state == nil {
 		state = &states.ResourceInstanceObject{}

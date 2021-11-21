@@ -45,6 +45,7 @@ func (g *Graph) walk(walker GraphWalker) tfdiags.Diagnostics {
 		defer logging.PanicHandler()
 
 		log.Printf("[TRACE] vertex %q: starting visit (%T)", dag.VertexName(v), v)
+
 		defer func() {
 			if diags.HasErrors() {
 				for _, diag := range diags {

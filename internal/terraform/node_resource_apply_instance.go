@@ -183,6 +183,7 @@ func (n *NodeApplyableResourceInstance) managedResourceExecute(ctx EvalContext) 
 	var state *states.ResourceInstanceObject
 	var createBeforeDestroyEnabled bool
 	var deposedKey states.DeposedKey
+
 	addr := n.ResourceInstanceAddr().Resource
 	_, providerSchema, err := getProvider(ctx, n.ResolvedProvider)
 	diags = diags.Append(err)

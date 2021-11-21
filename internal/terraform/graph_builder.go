@@ -37,6 +37,7 @@ func (b *BasicGraphBuilder) Build(path addrs.ModuleInstance) (*Graph, tfdiags.Di
 			continue
 		}
 		log.Printf("[TRACE] Executing graph transform %T", step)
+
 		err := step.Transform(g)
 		if thisStepStr := g.StringWithNodeTypes(); thisStepStr != lastStepStr {
 			log.Printf("[TRACE] Completed graph transform %T with new graph:\n%s  ------", step, logging.Indent(thisStepStr))

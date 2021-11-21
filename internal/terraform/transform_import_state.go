@@ -59,46 +59,6 @@ func (t *ImportStateTransformer) Transform(g *Graph) error {
 		}
 		g.Add(node)
 	}
-	for _, excludeTarget := range t.ExcludeTargets {
-
-		// This is only likely to happen in misconfigured tests
-		if t.Config == nil {
-			return fmt.Errorf("cannot import into an empty configuration")
-		}
-
-		// Get the module config
-		modCfg := t.Config.Descendent(excludeTarget.Addr.Module.Module())
-		if modCfg == nil {
-			return fmt.Errorf("module %s not found", excludeTarget.Addr.Module.Module())
-		}
-
-		providerAddr := addrs.AbsProviderConfig{
-			Module: excludeTarget.Addr.Module.Module(),
-		}
-
-		// Try to find the resource config
-		rsCfg := modCfg.Module.ResourceByAddr(excludeTarget.Addr.Resource.Resource)
-		if rsCfg != nil {
-			// Get the provider FQN for the resource from the resource configuration
-			providerAddr.Provider = rsCfg.Provider
-
-			// Get the alias from the resource's provider local config
-			providerAddr.Alias = rsCfg.ProviderConfigAddr().Alias
-		} else {
-			// Resource has no matching config, so use an implied provider
-			// based on the resource type
-			rsProviderType := excludeTarget.Addr.Resource.Resource.ImpliedProvider()
-			providerAddr.Provider = modCfg.Module.ImpliedProviderForUnqualifiedType(rsProviderType)
-		}
-
-		node := &graphNodeImportState{
-			Addr:         excludeTarget.Addr,
-			ID:           excludeTarget.ID,
-			ProviderAddr: providerAddr,
-		}
-		g.Add(node)
-	}
-
 	return nil
 }
 

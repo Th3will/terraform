@@ -64,6 +64,7 @@ func (n *NodePlannableResourceInstance) dataResourceExecute(ctx EvalContext) (di
 	addr := n.ResourceInstanceAddr()
 
 	var change *plans.ResourceInstanceChange
+
 	_, providerSchema, err := getProvider(ctx, n.ResolvedProvider)
 	diags = diags.Append(err)
 	if diags.HasErrors() {

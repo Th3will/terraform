@@ -690,16 +690,16 @@ func resourceTargetWarning(opts *PlanOpts, diags tfdiags.Diagnostics) tfdiags.Di
 				"Resource targeting is in effect",
 				`You are creating a plan with the -target and -exclude option, which means that the result of this plan may not represent all of the changes requested by the current configuration.
 
-				Additionally, in the plan there exists a/some resource/s that are being both targeted and excluded 
-	
+				Additionally, in the plan there exists a/some resource/s that are being both targeted and excluded
+
 	The -target/exclude option is not for routine use, and is provided only for exceptional situations such as recovering from errors or mistakes, or when Terraform specifically suggests to use it as part of an error message.`,
 			))
 		} else {
 			diags = diags.Append(tfdiags.Sourceless(
 				tfdiags.Warning,
 				"Resource targeting is in effect",
-				`You are creating a plan with the -target and -exclude option, which means that the result of this plan may not represent all of the changes requested by the current configuration. 
-	
+				`You are creating a plan with the -target and -exclude option, which means that the result of this plan may not represent all of the changes requested by the current configuration.
+
 	The -target/exclude option is not for routine use, and is provided only for exceptional situations such as recovering from errors or mistakes, or when Terraform specifically suggests to use it as part of an error message.`,
 			))
 		}

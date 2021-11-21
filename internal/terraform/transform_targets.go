@@ -14,7 +14,6 @@ import (
 // node must filter this list to targets considered relevant.
 type GraphNodeTargetable interface {
 	SetTargets([]addrs.Targetable)
-	//may need to be looked at bc it affected targeting cloned resources
 }
 
 // TargetsTransformer is a GraphTransformer that, when the user specifies a
@@ -136,7 +135,7 @@ func (t *TargetsTransformer) selectTargetedNodes(g *Graph, addrs []addrs.Targeta
 	return targetedNodes, nil
 }
 
-// Same purpose as selectTargetedNodes above, but modified for exclude
+// Same purpose as selectTargetedNodes above, but modified for exclude.
 func (t *TargetsTransformer) selectExcludedNodes(g *Graph, addrs []addrs.Targetable) (dag.Set, error) {
 	targetedNodes := make(dag.Set)
 

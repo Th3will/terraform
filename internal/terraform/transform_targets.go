@@ -42,7 +42,6 @@ func (t *TargetsTransformer) Transform(g *Graph) error {
 	}
 
 	if len(t.ExcludeTargets) > 0 {
-
 		targetedNodes, err := t.selectExcludedNodes(g, t.ExcludeTargets)
 		if err != nil {
 			return err

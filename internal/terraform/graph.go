@@ -1,7 +1,6 @@
 package terraform
 
 import (
-	//"fmt"
 	"log"
 	"strings"
 

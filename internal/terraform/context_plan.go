@@ -1,6 +1,5 @@
 package terraform
 
-//starred need help debugging line 128
 import (
 	"bytes"
 	"fmt"

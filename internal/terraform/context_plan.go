@@ -680,9 +680,8 @@ func blockedMovesWarningDiag(results refactoring.MoveResults) tfdiags.Diagnostic
 	)
 }
 
-//Warns user about using Resource Targeting
-//and determines if the user is using targeting, excluding, or both
-//then prints out the corresponding warning
+// resourceTargetWarning checks to see if the opts contain usage of
+// the -target or -exclude flags, and returns appropriate Diagnostics if so.
 func resourceTargetWarning(opts *PlanOpts, diags tfdiags.Diagnostics) tfdiags.Diagnostics {
 	if len(opts.Targets) > 0 && len(opts.ExcludeTargets) > 0 {
 		if hasConflictingTargetOptions(opts) {

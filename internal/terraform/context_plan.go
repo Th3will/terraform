@@ -111,6 +111,7 @@ func (c *Context) Plan(config *configs.Config, prevRunState *states.State, opts 
 	// includes language asking the user to report a bug.
 	varDiags := checkInputVariables(config.Module.Variables, variables)
 	diags = diags.Append(varDiags)
+
 	diags = diags.Append(resourceTargetWarning(opts, diags))
 
 	var plan *plans.Plan

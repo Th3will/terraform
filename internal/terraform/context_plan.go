@@ -723,7 +723,8 @@ The -exclude option is not for routine use, and is provided only for exceptional
 	return diags
 }
 
-//Checks whether there are any resources that are both targeted and excluded
+// hasConflictingTargetOptions returns true if both the -target and -exclude
+// flags have been specified with the same resource for both.
 func hasConflictingTargetOptions(opts *PlanOpts) bool {
 	targetSet := make(map[string]bool)
 	for _, s := range opts.Targets {

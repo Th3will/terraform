@@ -43,7 +43,6 @@ func (b *BasicGraphBuilder) Build(path addrs.ModuleInstance) (*Graph, tfdiags.Di
 			lastStepStr = thisStepStr
 		} else {
 			log.Printf("[TRACE] Completed graph transform %T (no changes)", step)
-
 		}
 
 		if err != nil {

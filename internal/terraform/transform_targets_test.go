@@ -410,7 +410,7 @@ output.root_id
 	}
 }
 
-//This tests whether exclude and target work together without conflicting
+// This tests whether exclude and target work together without conflicting
 func TestBothTargetTransformer(t *testing.T) {
 	mod := testModule(t, "transform-targets-conflict")
 

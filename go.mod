@@ -31,7 +31,7 @@ require (
 	github.com/gophercloud/utils v0.0.0-20200423144003-7c72efc7435d
 	github.com/hashicorp/aws-sdk-go-base v0.7.1
 	github.com/hashicorp/consul/api v1.9.1
-	github.com/hashicorp/consul/sdk v0.8.0
+	github.com/hashicorp/consul/sdk v0.9.0
 	github.com/hashicorp/errwrap v1.1.0
 	github.com/hashicorp/go-azure-helpers v0.18.0
 	github.com/hashicorp/go-checkpoint v0.5.0

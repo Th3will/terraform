@@ -2,6 +2,7 @@ package terraform
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/terraform/internal/addrs"
@@ -39,6 +40,18 @@ func (n *NodeValidatableResource) Path() addrs.ModuleInstance {
 // GraphNodeEvalable
 func (n *NodeValidatableResource) Execute(ctx EvalContext, op walkOperation) (diags tfdiags.Diagnostics) {
 	diags = diags.Append(n.validateResource(ctx))
+
+	var self addrs.Referenceable
+	switch {
+	case n.Config.Count != nil:
+		self = n.Addr.Resource.Instance(addrs.IntKey(0))
+	case n.Config.ForEach != nil:
+		self = n.Addr.Resource.Instance(addrs.StringKey(""))
+	default:
+		self = n.Addr.Resource.Instance(addrs.NoKey)
+	}
+	diags = diags.Append(validateCheckRules(ctx, n.Config.Preconditions, nil))
+	diags = diags.Append(validateCheckRules(ctx, n.Config.Postconditions, self))
 
 	if managed := n.Config.Managed; managed != nil {
 		hasCount := n.Config.Count != nil
@@ -383,10 +396,30 @@ func (n *NodeValidatableResource) validateResource(ctx EvalContext) tfdiags.Diag
 				moreDiags := schema.StaticValidateTraversal(traversal)
 				diags = diags.Append(moreDiags)
 
-				// TODO: we want to notify users that they can't use
-				// ignore_changes for computed attributes, but we don't have an
-				// easy way to correlate the config value, schema and
-				// traversal together.
+				// ignore_changes cannot be used for Computed attributes,
+				// unless they are also Optional.
+				// If the traversal was valid, convert it to a cty.Path and
+				// use that to check whether the Attribute is Computed and
+				// non-Optional.
+				if !diags.HasErrors() {
+					path := traversalToPath(traversal)
+
+					attrSchema := schema.AttributeByPath(path)
+
+					if attrSchema != nil && !attrSchema.Optional && attrSchema.Computed {
+						// ignore_changes uses absolute traversal syntax in config despite
+						// using relative traversals, so we strip the leading "." added by
+						// FormatCtyPath for a better error message.
+						attrDisplayPath := strings.TrimPrefix(tfdiags.FormatCtyPath(path), ".")
+
+						diags = diags.Append(&hcl.Diagnostic{
+							Severity: hcl.DiagWarning,
+							Summary:  "Redundant ignore_changes element",
+							Detail:   fmt.Sprintf("Adding an attribute name to ignore_changes tells Terraform to ignore future changes to the argument in configuration after the object has been created, retaining the value originally configured.\n\nThe attribute %s is decided by the provider alone and therefore there can be no configured value to compare with. Including this attribute in ignore_changes has no effect. Remove the attribute from ignore_changes to quiet this warning.", attrDisplayPath),
+							Subject:  &n.Config.TypeRange,
+						})
+					}
+				}
 			}
 		}
 
@@ -440,6 +473,20 @@ func (n *NodeValidatableResource) validateResource(ctx EvalContext) tfdiags.Diag
 
 		resp := provider.ValidateDataResourceConfig(req)
 		diags = diags.Append(resp.Diagnostics.InConfigBody(n.Config.Config, n.Addr.String()))
+	}
+
+	return diags
+}
+
+func validateCheckRules(ctx EvalContext, crs []*configs.CheckRule, self addrs.Referenceable) tfdiags.Diagnostics {
+	var diags tfdiags.Diagnostics
+
+	for _, cr := range crs {
+		_, conditionDiags := ctx.EvaluateExpr(cr.Condition, cty.Bool, self)
+		diags = diags.Append(conditionDiags)
+
+		_, errorMessageDiags := ctx.EvaluateExpr(cr.ErrorMessage, cty.String, self)
+		diags = diags.Append(errorMessageDiags)
 	}
 
 	return diags

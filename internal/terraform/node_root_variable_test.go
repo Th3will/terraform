@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/hashicorp/hcl/v2"
+	"github.com/hashicorp/hcl/v2/hcltest"
 	"github.com/zclconf/go-cty/cty"
 
 	"github.com/hashicorp/terraform/internal/addrs"
@@ -79,7 +80,7 @@ func TestNodeRootVariableExecute(t *testing.T) {
 				Name:           "foo",
 				Type:           cty.Number,
 				ConstraintType: cty.Number,
-				Validations: []*configs.VariableValidation{
+				Validations: []*configs.CheckRule{
 					{
 						Condition: fakeHCLExpressionFunc(func(ctx *hcl.EvalContext) (cty.Value, hcl.Diagnostics) {
 							// This returns true only if the given variable value
@@ -101,7 +102,7 @@ func TestNodeRootVariableExecute(t *testing.T) {
 							}
 							return cty.True, nil
 						}),
-						ErrorMessage: "Must be a number.",
+						ErrorMessage: hcltest.MockExprLiteral(cty.StringVal("Must be a number.")),
 					},
 				},
 			},

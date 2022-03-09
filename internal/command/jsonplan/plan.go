@@ -22,7 +22,7 @@ import (
 // FormatVersion represents the version of the json format and will be
 // incremented for any change to this format that requires changes to a
 // consuming parser.
-const FormatVersion = "1.0"
+const FormatVersion = "1.1"
 
 // Plan is the top-level representation of the json format of a plan. It includes
 // the complete config and current state.
@@ -597,7 +597,7 @@ func unknownAsBool(val cty.Value) cty.Value {
 			// Omit all of the "false"s for known values for more compact
 			// serialization
 			if !vAsBool.RawEquals(cty.False) {
-				vals[k.AsString()] = unknownAsBool(v)
+				vals[k.AsString()] = vAsBool
 			}
 		}
 		// The above transform may have changed the types of some of the
